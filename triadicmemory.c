@@ -67,6 +67,7 @@ quit
 #define TRIADICMEMORY_COMMANDLINE
 
 
+
 // pull out the following if compiling as library
 
 // -------------------- begin triadicmemory.h --------------------
@@ -105,6 +106,48 @@ SDR* triadicmemory_read_z  (TriadicMemory *T, SDR *x, SDR *y, SDR *z);
 #include <ctype.h>
 #include <math.h>
 #include <time.h>
+/*
+void swapElements(int * x, int* y) 
+{ 
+	int temp = *x; 
+	*x = *y; 
+	*y = temp; 
+}   
+// Partition function
+int partition (int  arr[], int lowIndex, int highIndex) 
+{ 
+	int pivotElement = arr[highIndex];
+	int i = (lowIndex - 1); 
+	for (int j = lowIndex; j <= highIndex- 1; j++) 
+	{ 
+		if (arr[j] <= pivotElement) 
+		{ 
+			i++; 
+			swapElements(&arr[i], &arr[j]); 
+		} 
+	} 
+	swapElements(&arr[i + 1], &arr[highIndex]); 
+	return (i + 1); 
+}   
+// QuickSort Function
+void quickSort(int arr[], int lowIndex, int highIndex) 
+{ 
+	if (lowIndex < highIndex) 
+	{ 
+		int pivot = partition(arr, lowIndex, highIndex); 
+		// Separately sort elements before & after partition 
+		quickSort(arr, lowIndex, pivot - 1); 
+		quickSort(arr, pivot + 1, highIndex); 
+	} 
+}   
+// Function to print array
+void printArray(int arr[], int size) 
+{ 
+	int i; 
+	for (i=0; i < size; i++) 
+	printf("%d ", arr[i]); 
+}   
+*/
 
 static int cmpfunc (const void * a, const void * b)
 	{ return  *(int*)a - *(int*)b; }
@@ -157,7 +200,30 @@ SDR* sdr_random( SDR*s, int p)
 	return (s);
 	}
 	
+	SDR * 
+	build_random_sdr(int n, int p)
+	{
+	static int *range = 0;
+	SDR * s = sdr_new(n);
+	s->p = p;
 	
+	srand((unsigned int)time(NULL));				
+	range = malloc(n*sizeof(int));					// integers 0 to n-1
+	for (int i = 0; i < n; i++) range[i] = i;
+		
+	for (int k = 0; k < p; k++) // random selection of p integers in the range 0 to n-1
+		{
+		int r = rand() % n;
+		s->a[k] = range[r];
+		int tmp = range[n-1]; range[n-1] = range[r]; range[r] = tmp; // swap selected value to the end
+		n--; // values swapped to the end won't get picked again
+		}
+		
+	qsort( s->a, p, sizeof(int), cmpfunc);
+	
+	return s;
+	}
+
 int sdr_distance( SDR*x, SDR*y) // Hamming distance
 	{
 	int i = 0, j = 0, h = x->p + y->p;
@@ -301,6 +367,136 @@ static void sdr_print(SDR *s)
 	printf("\n"); fflush(stdout);
 	}
 
+
+int test_triadic(int N, int P)
+{
+	int test_count = 10000;
+	int i,errors = 0;
+   	clock_t start,end;
+
+	printf("Testing for N=%d and P=%d for %d SDR insertions and queryings\n",N,P,test_count);
+
+	TriadicMemory *T = triadicmemory_new(N, P);
+
+	SDR** xvec = (SDR**) malloc( test_count * sizeof(SDR*));
+	SDR** yvec = (SDR**) malloc( test_count * sizeof(SDR*));
+	SDR** zvec = (SDR**) malloc( test_count * sizeof(SDR*));
+	SDR** qvec = (SDR**) malloc( test_count * sizeof(SDR*)); // query holding vector
+
+	for (i=0;i<test_count;i++)
+	{
+		xvec[i] = build_random_sdr( N, P);
+		yvec[i] = build_random_sdr( N, P);
+		zvec[i] = build_random_sdr( N, P);
+		qvec[i] = build_random_sdr( N, P);
+	}
+	
+	start = clock() ;
+	for (i=0;i<test_count;i++)
+	{
+		SDR * x = xvec[i];
+		SDR * y = yvec[i];
+		SDR * z = zvec[i];
+		triadicmemory_write(T,x,y,z);
+	}
+	end = clock() ;
+	double elapsed_time = (end-start)/(double)CLOCKS_PER_SEC ;
+	printf("SDR Insertion time: %f - %.f per sec\n", elapsed_time, test_count/elapsed_time);
+
+	// Query Z!
+	start = clock() ;
+	for (i=0;i<test_count;i++)
+	{
+		SDR * x = xvec[i];
+		SDR * y = yvec[i];
+		SDR * q = qvec[i];
+		triadicmemory_read_z (T, x, y, q);
+	}
+	end = clock() ;
+	elapsed_time = (end-start)/(double)CLOCKS_PER_SEC ;
+	printf("Z SDR query time: %f - %.f per sec: ", elapsed_time, test_count/elapsed_time);
+
+	start = clock() ;
+	for (i=0;i<test_count;i++)
+	{
+		for (int j=0;j<P;j++)
+		{
+			if (qvec[i]->a[j] != zvec[i]->a[j])
+			{
+				printf("error: at cycle %d: %d queried bit is %d vs original %d\n", i, j,qvec[i]->a[j], zvec[i]->a[j]);
+				errors++;
+			}
+		}
+	}
+	end = clock() ;
+	elapsed_time = (end-start)/(double)CLOCKS_PER_SEC ;
+	printf("%d errors. (check time: %f - %.f per sec)\n", errors, elapsed_time, test_count/elapsed_time);
+
+
+	// Query Y!
+	start = clock() ;
+	for (i=0;i<test_count;i++)
+	{
+		SDR * x = xvec[i];
+		SDR * q = qvec[i];
+		SDR * z = zvec[i];
+		triadicmemory_read_y (T, x, q, z);
+	}
+	end = clock() ;
+	elapsed_time = (end-start)/(double)CLOCKS_PER_SEC ;
+	printf("Y SDR query time: %f - %.f per sec: ", elapsed_time, test_count/elapsed_time);
+
+	start = clock() ;
+	for (i=0;i<test_count;i++)
+	{
+		for (int j=0;j<P;j++)
+		{
+			if (qvec[i]->a[j] != yvec[i]->a[j])
+			{
+				printf("error: at cycle %d: %d queried bit is %d vs original %d\n", i, j,qvec[i]->a[j], yvec[i]->a[j]);
+				errors++;
+			}
+		}
+	}
+	end = clock() ;
+	elapsed_time = (end-start)/(double)CLOCKS_PER_SEC ;
+	printf("%d errors. (check time: %f - %.f per sec)\n", errors, elapsed_time, test_count/elapsed_time);
+
+
+// query X
+	// Query Z!
+	start = clock() ;
+	for (i=0;i<test_count;i++)
+	{
+		SDR * q = qvec[i];
+		SDR * y = yvec[i];
+		SDR * z = zvec[i];
+		triadicmemory_read_x (T, q, y, z);
+	}
+	end = clock() ;
+	elapsed_time = (end-start)/(double)CLOCKS_PER_SEC ;
+	printf("X SDR query time: %f - %.f per sec: ", elapsed_time, test_count/elapsed_time);
+
+	start = clock() ;
+	for (i=0;i<test_count;i++)
+	{
+		for (int j=0;j<P;j++)
+		{
+			if (qvec[i]->a[j] != xvec[i]->a[j])
+			{
+				printf("error: at cycle %d: %d queried bit is %d vs original %d\n", i, j,qvec[i]->a[j], xvec[i]->a[j]);
+				errors++;
+			}
+		}
+	}
+	end = clock() ;
+	elapsed_time = (end-start)/(double)CLOCKS_PER_SEC ;
+	printf("%d errors. (check time: %f - %.f per sec)\n", errors, elapsed_time, test_count/elapsed_time);
+
+	return errors;
+}
+
+
 int main(int argc, char *argv[])
 	{
 	char *buf, inputline[10000];
@@ -310,14 +506,19 @@ int main(int argc, char *argv[])
 		printf("usage: triadicmemory n p\n");
 		printf("n is the hypervector dimension, typically 1000\n");
 		printf("p is the target sparse population, typically 10\n");
-		exit(1);
+
 		}
         
 	int N, P;  // SDR dimension and target sparse population, received from command line
 
     sscanf( argv[1], "%d", &N);
     sscanf( argv[2], "%d", &P);
-   
+
+	if (argc == 4 && !strcmp(argv[3], "test"))
+	{
+		test_triadic(1000, 10);
+		exit(0);
+	}
    	TriadicMemory *T = triadicmemory_new(N, P);
     	
 	SDR *x = sdr_new(N);
