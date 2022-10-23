@@ -1,2 +1,5 @@
 [deps]
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 PkgTemplates = "14b8a8f1-9102-5b29-a752-f990bacb7fe1"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+TriadicMemory = "c30adb72-61ca-4ce7-9e74-3226647f0af8"
